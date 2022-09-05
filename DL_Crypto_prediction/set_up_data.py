@@ -1,29 +1,13 @@
 import numpy as np
 import pandas as pd
 import pandas_datareader as web
-import tensorflow as tf
-import torch
-import torch.nn as nn
-
-import matplotlib.pyplot as plt
-
-import itertools
-import pickle
 
 from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler
 
-from sklearn.metrics import mean_squared_error
-from keras.models import Sequential
-from keras.layers import Dense, Activation, Dropout
-from keras.layers import LSTM
 
 DATE_START = datetime(2010, 7, 1)
 DATE_END = datetime.today()
-
-
-class RNN:
-    pass
 
 
 def get_data(stock_name, start, end):
@@ -49,6 +33,7 @@ def get_scaled_data(data, scaler=None):
 
     scaled_data = scaler.fit_transform(data.reshape(-1, 1))
     # plot scaled data
+
     # pd.DataFrame(scaled_data).plot()
 
     return scaled_data, scaler
@@ -84,16 +69,7 @@ def prepare_data(df, step=50):
     scaled_close_test_data = close_scaler.transform(close_test_data)
     x_test, y_test = create_pattern_set(scaled_close_test_data, steps=50)
 
-    return x_train, x_test, y_train, y_test
+    y_train = np.reshape(y_train, (y_train.shape[0], 1))
+    y_test = np.reshape(y_test, (y_test.shape[0], 1))
 
-
-def main():
-    df = get_data('BTC-USD', DATE_START, DATE_END)
-    x_train, x_test, y_train, y_test = prepare_data(df)
-
-    print(x_train, x_test, y_train, y_test)
-    print("train ", x_train.shape, "test ", x_test.shape)
-
-
-if __name__ == '__main__':
-    main()
+    return x_train, x_test, y_train, y_test, close_scaler
