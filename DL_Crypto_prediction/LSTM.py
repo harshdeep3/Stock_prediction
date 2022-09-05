@@ -4,7 +4,7 @@ import tensorflow as tf
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
-import math, time
+import math
 
 from sklearn.metrics import mean_squared_error
 from set_up_data import get_data, prepare_data, DATE_START, DATE_END
