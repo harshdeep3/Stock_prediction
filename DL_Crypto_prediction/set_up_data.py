@@ -44,11 +44,11 @@ def create_pattern_set(data_target, steps=7):
     y_train = []
 
     for day in range(steps, data_target.shape[0]):
-        x_train.append(data_target[day-steps:day, 0])
-        y_train.append(data_target[day, 0])
+        x_train.append(data_target[day-steps:day])
+        y_train.append(data_target[day])
 
     x_train, y_train = np.array(x_train), np.array(y_train)
-    x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+    x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 2))
 
     return x_train, y_train
 
@@ -60,16 +60,29 @@ def prepare_data(df, step=50):
     whole_train_data = df.iloc[:train_df_len]
     whole_test_data = df[train_df_len - step:]
 
-    close_train_data = whole_train_data['Close'].values
+    # first dim -> close data
+    close_train_data = whole_train_data['Close'].values.reshape(train_df_len, 1)
     close_test_data = whole_test_data['Close'].values.reshape(-1, 1)
 
+    # 2nd dim -> Volume
+    vol_train_data = whole_train_data['Volume'].values.reshape(train_df_len, 1)
+    vol_test_data = whole_test_data['Volume'].values.reshape(-1, 1)
+
+    # scaled data
     scaled_close_train_data, close_scaler = get_scaled_data(close_train_data)
-    x_train, y_train = create_pattern_set(scaled_close_train_data, steps=50)
-
     scaled_close_test_data = close_scaler.transform(close_test_data)
-    x_test, y_test = create_pattern_set(scaled_close_test_data, steps=50)
 
-    y_train = np.reshape(y_train, (y_train.shape[0], 1))
-    y_test = np.reshape(y_test, (y_test.shape[0], 1))
+    scaled_vol_train_data, vol_scaler = get_scaled_data(vol_train_data)
+    scaled_vol_test_data = vol_scaler.transform(vol_test_data)
+
+    # combine data
+    combined_train_data = np.concatenate((scaled_close_train_data, scaled_vol_train_data), axis=1)
+    combined_test_data = np.concatenate((scaled_close_test_data, scaled_vol_test_data), axis=1)
+
+    x_train, y_train = create_pattern_set(combined_train_data, steps=50)
+    x_test, y_test = create_pattern_set(combined_test_data, steps=50)
+
+    y_train = np.reshape(y_train, (y_train.shape[0], 2))
+    y_test = np.reshape(y_test, (y_test.shape[0], 2))
 
     return x_train, x_test, y_train, y_test, close_scaler

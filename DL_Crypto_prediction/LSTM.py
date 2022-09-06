@@ -12,13 +12,14 @@ from set_up_data import get_data, prepare_data, DATE_START, DATE_END
 
 class LSTM(nn.Module):
 
-    def __init__(self, input_dim=1, hidden_dim=32, num_layer=2, output_dim=1):
+    def __init__(self, input_dim=2, hidden_dim=32, num_layer=2, output_dim=2):
         super(LSTM, self).__init__()
 
         self.hidden_dim = hidden_dim
         self.num_layers = num_layer
 
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layer, batch_first=True)
+        self.rnn = nn.RNN(input_dim, hidden_dim, num_layer, batch_first=True)
 
         # readout layer -> flatten
         self.fc = nn.Linear(hidden_dim, output_dim)
@@ -33,7 +34,8 @@ class LSTM(nn.Module):
 
         # We need to detach as we are doing truncated backpropagation through time (BPTT)
         # If we don't, we'll backprop all the way to the start even after going through another batch
-        out, (hn, cn) = self.lstm(x, (h0.detach(), c0.detach()))
+        # out, (hn, cn) = self.lstm(x, (h0.detach(), c0.detach()))
+        out, hn = self.rnn(x, (h0.detach()))
 
         # Index hidden state of last time step
         # print(out.size())
@@ -89,11 +91,11 @@ def main():
     y_train = torch.from_numpy(y_train).type(torch.Tensor)
     y_test = torch.from_numpy(y_test).type(torch.Tensor)
 
-    # check data
-    # plt.plot(df['High'])
+    # # check data
+    # plt.plot(y_train)
     # plt.show()
     # print("x_train ", x_train, "\nx_test ", x_test, "\ny_train", y_train, "\ny_test", y_test)
-
+    #
     # print("x train ", x_train.size(), "x test ", x_test.size())
     # print("y train ", y_train.size(), "y test ", y_test.size())
 
@@ -123,22 +125,33 @@ def main():
     y_test = scaler.inverse_transform(y_test.detach().numpy())
 
     # calculate root mean squared error
+    # Close
     train_score = math.sqrt(mean_squared_error(y_train[:, 0], y_train_pred[:, 0]))
-    print('Train Score: %.2f RMSE' % train_score)
+    print('Train Close Score: %.2f RMSE' % train_score)
     test_score = math.sqrt(mean_squared_error(y_test[:, 0], y_test_pred[:, 0]))
-    print('Test Score: %.2f RMSE' % test_score)
+    print('Test Close Score: %.2f RMSE' % test_score)
+    # Volume
+    train_score = math.sqrt(mean_squared_error(y_train[:, 1], y_train_pred[:, 1]))
+    print('Train Vol Score: %.2f RMSE' % train_score)
+    test_score = math.sqrt(mean_squared_error(y_test[:, 1], y_test_pred[:, 1]))
+    print('Test Vol Score: %.2f RMSE' % test_score)
 
     # Visualising the results
-    figure, axes = plt.subplots(figsize=(15, 6))
-    axes.xaxis_date()
+    figure, axes = plt.subplots(2, 2, figsize=(15, 6))
+    # axes.xaxis_date()
 
-    axes.plot(df[len(df) - len(y_test):].index, y_test, color='red', label='Real BTC Stock Price')
-    axes.plot(df[len(df) - len(y_test):].index, y_test_pred, color='blue', label='Predicted BTC Stock Price')
-    # axes.xticks(np.arange(0,394,50))
-    plt.title('BTC Stock Price Prediction')
+    axes[0, 0].plot(df[len(df) - len(y_test):].index, y_test[:, 0], color='red', label='Real BTC Stock Price')
+    axes[0, 0].plot(df[len(df) - len(y_test):].index, y_test_pred[:, 0], color='blue',
+                    label='Predicted BTC Stock Price')
+    plt.title('BTC Stock Close Price Prediction')
     plt.xlabel('Time')
-    plt.ylabel('BTC Stock Price')
-    plt.legend()
+    plt.ylabel('BTC Stock Close Price')
+
+    axes[0, 1].plot(df[len(df) - len(y_test):].index, y_test[:, 1], color='red', label='Real BTC Volume')
+    axes[0, 1].plot(df[len(df) - len(y_test):].index, y_test_pred[:, 1], color='blue', label='Predicted BTC Volume')
+    plt.title('BTC Volume Prediction')
+    plt.xlabel('Time')
+    plt.ylabel('BTC Volume')
     plt.savefig('BTC_pred.png')
     plt.show()
 
