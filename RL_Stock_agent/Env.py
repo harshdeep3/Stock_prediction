@@ -171,18 +171,29 @@ class StockEnv(gym.Env):
 
         self.obs_space = observation_namedtuple
 
-        norm_stock_owned = np.interp(stock_owned, [0, stock_vol], [0.0, 1.0])
-        norm_cash_in_hand = np.interp(cash_in_hand, [0, stock_vol*stock_close], [0.0, 1.0])
-        norm_stock_open = np.interp(stock_open, [0, self.stock_price_history['High'].max()*1.1], [0.0, 1.0])
-        norm_stock_low = np.interp(stock_low, [0, self.stock_price_history['High'].max()*1.1], [0.0, 1.0])
-        norm_stock_close = np.interp(stock_close, [0, self.stock_price_history['High'].max()*1.1], [0.0, 1.0])
-        norm_stock_high = np.interp(stock_high, [0, self.stock_price_history['High'].max()*1.1], [0.0, 1.0])
+        norm_stock_owned = np.interp(stock_owned, [0, stock_vol], [0.0, 1.0]).reshape(1,1)
+        norm_cash_in_hand = np.interp(cash_in_hand, [0, stock_vol*stock_close], [0.0, 1.0]).reshape(1,1)
+        norm_stock_open = np.interp(stock_open, [0, self.stock_price_history['High'].max()*1.1],
+                                    [0.0, 1.0]).reshape(1,1)
+        norm_stock_low = np.interp(stock_low, [0, self.stock_price_history['High'].max()*1.1],
+                                   [0.0, 1.0]).reshape(1,1)
+        norm_stock_close = np.interp(stock_close, [0, self.stock_price_history['High'].max()*1.1],
+                                     [0.0, 1.0]).reshape(1,1)
+        norm_stock_high = np.interp(stock_high, [0, self.stock_price_history['High'].max()*1.1],
+                                    [0.0, 1.0]).reshape(1,1)
         norm_stock_adj_close = np.interp(stock_adj_close, [0, self.stock_price_history['High'].max() * 1.1],
-                                         [0.0, 1.0])
+                                         [0.0, 1.0]).reshape(1,1)
+        norm_stock_vol = np.interp(stock_vol, [0, self.stock_price_history['Volume'].max() * 1.1],
+                                   [0.0, 1.0]).reshape(1,1)
+        norm_stock_rsi = np.interp(stock_rsi, [0, self.rsi.max() * 1.1], [0.0, 1.0]).reshape(1,1)
+        norm_stock_sma = np.interp(stock_sma, [0, self.sma.max() * 1.1], [0.0, 1.0]).reshape(1,1)
+        norm_stock_ema = np.interp(stock_ema, [0, self.ema.max() * 1.1], [0.0, 1.0]).reshape(1,1)
 
+        row_matrix = np.concatenate((norm_stock_owned, norm_stock_open, norm_stock_high, norm_stock_low,
+                                     norm_stock_close, norm_stock_adj_close, norm_stock_vol, norm_stock_rsi,
+                                     norm_stock_sma, norm_stock_ema, norm_cash_in_hand))
 
-
-        return []
+        return row_matrix
 
     def step(self, action):
         pass
