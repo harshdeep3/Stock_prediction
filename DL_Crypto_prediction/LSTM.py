@@ -18,7 +18,9 @@ class LSTM(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_layers = num_layer
 
+        # LSTM
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layer, batch_first=True)
+        # RNN
         self.rnn = nn.RNN(input_dim, hidden_dim, num_layer, batch_first=True)
 
         # readout layer -> flatten
@@ -34,7 +36,10 @@ class LSTM(nn.Module):
 
         # We need to detach as we are doing truncated backpropagation through time (BPTT)
         # If we don't, we'll backprop all the way to the start even after going through another batch
+
+        # LSTM
         # out, (hn, cn) = self.lstm(x, (h0.detach(), c0.detach()))
+        # RNN
         out, hn = self.rnn(x, (h0.detach()))
 
         # Index hidden state of last time step
