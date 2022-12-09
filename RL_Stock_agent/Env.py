@@ -13,6 +13,7 @@ sma_time = 20
 ema_time = 20
 rsi_time = 14
 
+
 def calculateRsi(data, time=rsi_time):
     """
         RSI is an indicator which is used by traders, to look at the strength of
@@ -109,6 +110,8 @@ class StockEnv(gym.Env):
         self.action = None
         # possibilities = 3^number of stocks
         self.action_space = spaces.Discrete(n=3)
+        self.action_list = list(
+            map(list, itertools.product([0, 1, 2], repeat=self.n_stock)))
         self.obs_space = spaces.Box(low=0.0, high=1.0, shape=(self.state_dim, 1))
 
         # to start the data for day 0 and get all the info for day 0
@@ -196,13 +199,153 @@ class StockEnv(gym.Env):
         return row_matrix
 
     def step(self, action):
-        pass
+        reward = 0
+
+        cur_reward = 0
+        done = False
+        episode_done = False
+        prev_reward = self.get_reward()
+
+        stock_owned = self.obs_namedtuple.owned
+        cash_in_hand = self.initial_investment
+        stock_open = self.stock_price_history.Open[self.cur_step]
+        stock_low = self.stock_price_history.Low[self.cur_step]
+        stock_close = self.stock_price_history.Close[self.cur_step]
+        stock_high = self.stock_price_history.High[self.cur_step]
+        stock_adj_close = self.stock_price_history['Adj Close'][self.cur_step]
+        stock_vol = self.stock_price_history.Volume[self.cur_step]
+        # indicators
+        # rsi ema and sma has nan for the first couple of values.
+        self.rsi = calculateRsi(self.stock_price_history)
+        if np.isnan(self.rsi[self.cur_step]):
+            stock_rsi = 0
+        else:
+            stock_rsi = self.rsi[self.cur_step]
+
+        self.sma = calculateSMA(self.stock_price_history)
+        self.ema = calculateEMA(self.stock_price_history)
+        # as this use previous data to get the current value, this can be nan
+        # at the first few time steps, this is to remove them
+        if np.isnan(self.sma[self.cur_step]):
+            stock_sma = stock_close
+        else:
+            stock_sma = self.sma[self.cur_step]
+
+        if np.isnan(self.ema[self.cur_step]):
+            stock_ema = stock_close
+        else:
+            stock_ema = self.ema[self.cur_step]
+
+        self.obs_namedtuple = obs_namedtuple(owned=stock_owned, open=stock_open, low=stock_low, close=stock_close,
+                                             high=stock_high, adj_close=stock_adj_close, volume=stock_vol,
+                                             rsi=stock_rsi, sma=stock_sma, ema=stock_ema, cash_in_hand=cash_in_hand)
+        self.trade(action)
+
+        cur_reward = self.get_reward()
+        reward = cur_reward - prev_reward
+
+        # go to the next step
+        self.cur_step += 1
+
+        # episode length is 28days  (4 weeks or 1 month)
+        if self.cur_step % 28 == 0:
+            episode_done = True
+
+        # done if the data is finished
+        done = self.cur_step == self.n_step - 1
+
+        info = {'cur_reward': cur_reward}
+
+        return self.get_obs(), reward, episode_done, done, info
+
+    def get_reward(self):
+
+        reward = (self.obs_namedtuple.owned * self.obs_namedtuple.close) + self.obs_namedtuple.cash_in_hand
+
+        return reward
 
     def get_obs(self):
-        pass
+        obs = self.reformat_into_matrix(self.obs_namedtuple)
 
-    def get_val(self):
-        pass
+        return obs
+
+    def update_obs(self, owned=None, stock_open=None, low=None, close=None, high=None, adj_close=None, volume=None,
+                   rsi=None, sma=None, ema=None, cash_in_hand=None):
+        if owned is None:
+            owned = self.obs_namedtuple.owned
+
+        if stock_open is None:
+            stock_open = self.obs_namedtuple.open
+
+        if low is None:
+            low = self.obs_namedtuple.low
+
+        if close is None:
+            close = self.obs_namedtuple.close
+
+        if high is None:
+            high = self.obs_namedtuple.high
+
+        if adj_close is None:
+            adj_close = self.obs_namedtuple.adj_close
+
+        if volume is None:
+            volume = self.obs_namedtuple.volume
+
+        if rsi is None:
+            rsi = self.obs_namedtuple.rsi
+
+        if sma is None:
+            sma = self.obs_namedtuple.sma
+
+        if ema is None:
+            ema = self.obs_namedtuple.ema
+
+        if cash_in_hand is None:
+            cash_in_hand = self.obs_namedtuple.cash_in_hand
+
+        self.obs_namedtuple = obs_namedtuple(owned=owned, open=stock_open, low=low, close=close, high=high,
+                                             adj_close=adj_close, volume=volume, rsi=rsi, sma=sma, ema=ema,
+                                             cash_in_hand=cash_in_hand)
+
+    def trade(self, action):
+
+        action_vec = self.action_space[action]
+        cash_in_hand = self.obs_namedtuple.cash_in_hand
+
+        allactions = []
+        sell_index = []
+        buy_index = []
+
+        for i, a in enumerate(action_vec):
+            if a == 0:
+                # sell stocks
+                sell_index.append(i)
+            elif a == 2:
+                # buy stocks
+                buy_index.append(i)
+
+        if sell_index:
+            cash_in_hand += self.obs_namedtuple.close * self.obs_namedtuple.owned
+            owned = 0
+            self.update_obs(cash_in_hand=cash_in_hand, owned=owned)
+        #     make update obs_namedtyple function
+        elif buy_index:
+            can_buy = True
+            while can_buy:
+                owned = self.obs_namedtuple.owned
+                for i in buy_index:
+                    # buy a single stock on loop
+                    # if there are multiple stocks then the loop iterates over each stock and buys 1 stock
+                    # (if it can) for the stocks available each iteration.
+                    if self.obs_namedtuple.cash_in_hand > self.obs_namedtuple.close:
+                        owned += 1  # buy one share
+                        cash_in_hand -= self.obs_namedtuple.close
+                        self.update_obs(owned=owned, cash_in_hand=cash_in_hand)
+                    else:
+                        # if the cash left is lower the stock price then stop buying
+                        can_buy = False
+        return allactions
 
     def render(self, mode="human"):
         pass

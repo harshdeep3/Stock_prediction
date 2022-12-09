@@ -1,0 +1,6 @@
+
+1 -> make the uni project work
+2 -> make the uni project work with stablebaselines-3
+3 -> get info from the broker using python
+4 -> try predicting using the broker data
+5 -> add broker stuff into stable basleine code

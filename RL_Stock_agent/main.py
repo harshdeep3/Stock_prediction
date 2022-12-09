@@ -37,5 +37,5 @@ if __name__ == "__main__":
     data = get_data(STOCKNAME, START, END)
     env = StockEnv(data)
 
-    print(data.max())
+    print(env.action_space)
 
