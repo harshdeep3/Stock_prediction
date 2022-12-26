@@ -1,11 +1,11 @@
 import numpy as np
 import itertools
 
-sma_time = 20
-ema_time = 20
-rsi_time = 14
+SMA_TIME = 20
+EMA_TIME = 20
+RSI_TIME = 14
 
-def calculateRsi(data, time=rsi_time):
+def calculateRsi(data, time=RSI_TIME):
     """[summary]
     RSI is an indicator which is used by traders, to look at the strength of
     the current price movement. This returns the RSI value for each state
@@ -19,7 +19,7 @@ def calculateRsi(data, time=rsi_time):
             [float]: The RSI value for that movement.
     """
 
-    global rsi_time
+    global RSI_TIME
     try:
         diff = data.Close.diff()
         # this preservers dimensions off diff values
@@ -42,7 +42,7 @@ def calculateRsi(data, time=rsi_time):
         print("Failed! Error", e)
 
 
-def calculateSMA(data, time=sma_time):
+def calculateSMA(data, time=SMA_TIME):
     """[summary]
     This calculates the values for the simple moving average.
     Args:
@@ -53,13 +53,13 @@ def calculateSMA(data, time=sma_time):
     Returns:
             [type]: Moving average values
     """
-    global sma_time
+    global SMA_TIME
     # Change the value of the sma used to the value displayed on the app
     sma_time = time
     return data['Close'].rolling(time).mean()
 
 
-def calculateEMA(data, time=ema_time):
+def calculateEMA(data, time=EMA_TIME):
     """[summary]
     This calculates the exponential moving average, this gives more importance
     to the newer data.
@@ -71,7 +71,7 @@ def calculateEMA(data, time=ema_time):
     Returns:
             [type]: [description]
     """
-    global ema_time
+    global EMA_TIME
     # Change the value of the ema used to the value displayed on the app
     ema_time = time
     return data['Close'].ewm(span=time, min_periods=0, adjust=False).mean()
