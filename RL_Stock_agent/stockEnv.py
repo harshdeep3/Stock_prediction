@@ -6,9 +6,11 @@ from typing import Tuple
 from gym import spaces
 from collections import namedtuple
 
+# obs_namedtuple = namedtuple('obs_namedtuple',
+#                             ['owned', 'open', 'low', 'close', 'high', 'adj_close', 'volume', 'rsi', 'sma', 'ema',
+#                              'cash_in_hand'])
 obs_namedtuple = namedtuple('obs_namedtuple',
-                            ['owned', 'open', 'low', 'close', 'high', 'adj_close', 'volume', 'rsi', 'sma', 'ema',
-                             'cash_in_hand'])
+                            ['owned', 'open', 'low', 'close', 'high', 'rsi', 'sma', 'ema', 'cash_in_hand'])
 SMA_TIME = 20
 EMA_TIME = 20
 RSI_TIME = 14
@@ -97,24 +99,37 @@ class StockEnv(gym.Env):
         # the number of days in the data
         self.n_step = self.stock_price_history.shape[0]
         # instance attributes
+        self.obs_namedtuple = None
         self.initial_investment = initial_investment
         self.cur_step = None  # -> the current day in the history
-        self.obs_namedtuple = None
         self.sma = None
         self.ema = None
         self.rsi = None
-
-        self.state_dim = self.n_stock * 10 + 1
+        self.state_dim = self.n_stock * 8 + 1
         # possibilities -> 3 actions (buy, sell, hold)
-        self.action = None
         # possibilities = 3^number of stocks
         self.action_space = spaces.Discrete(n=3)
         self.action_list = list(
             map(list, itertools.product([0, 1, 2], repeat=self.n_stock)))
-        self.obs_space = spaces.Box(low=0.0, high=1.0, shape=(self.state_dim, 1))
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.state_dim, 1), dtype=np.float32)
 
         # to start the data for day 0 and get all the info for day 0
         self.reset()
+        self.post_init()
+
+    def post_init(self):
+        owned = 0
+        stock_open = self.stock_price_history.Open[0]
+        low = self.stock_price_history.Low[0]
+        close = self.stock_price_history.Close[0]
+        high = self.stock_price_history.High[0]
+        rsi = self.sma
+        sma = self.rsi
+        ema = self.ema
+        cash_in_hand = self.initial_investment
+
+        self.obs_namedtuple = obs_namedtuple(owned=owned, open=stock_open, low=low, close=close, high=high, rsi=rsi, sma=sma,
+                                             ema=ema, cash_in_hand=cash_in_hand)
 
     def get_obs(self) -> gym.spaces.MultiDiscrete:
         # todo fix -> obs is not right
@@ -139,11 +154,11 @@ class StockEnv(gym.Env):
         if high is None:
             high = self.obs_namedtuple.high
 
-        if adj_close is None:
-            adj_close = self.obs_namedtuple.adj_close
-
-        if volume is None:
-            volume = self.obs_namedtuple.volume
+        # if adj_close is None:
+        #     adj_close = self.obs_namedtuple.adj_close
+        #
+        # if volume is None:
+        #     volume = self.obs_namedtuple.volume
 
         if rsi is None:
             rsi = self.obs_namedtuple.rsi
@@ -158,10 +173,9 @@ class StockEnv(gym.Env):
             cash_in_hand = self.obs_namedtuple.cash_in_hand
 
         self.obs_namedtuple = obs_namedtuple(owned=owned, open=stock_open, low=low, close=close, high=high,
-                                             adj_close=adj_close, volume=volume, rsi=rsi, sma=sma, ema=ema,
-                                             cash_in_hand=cash_in_hand)
+                                             rsi=rsi, sma=sma, ema=ema, cash_in_hand=cash_in_hand)
 
-    def step(self, action) -> Tuple[gym.spaces.MultiDiscrete, float, bool, bool, dict]:
+    def step(self, action) -> Tuple[gym.spaces.MultiDiscrete, float, bool, dict]:
         reward = 0
 
         cur_reward = 0
@@ -175,8 +189,8 @@ class StockEnv(gym.Env):
         stock_low = self.stock_price_history.Low[self.cur_step]
         stock_close = self.stock_price_history.Close[self.cur_step]
         stock_high = self.stock_price_history.High[self.cur_step]
-        stock_adj_close = self.stock_price_history['Adj Close'][self.cur_step]
-        stock_vol = self.stock_price_history.Volume[self.cur_step]
+        # stock_adj_close = self.stock_price_history['Adj Close'][self.cur_step]
+        # stock_vol = self.stock_price_history.Volume[self.cur_step]
         # indicators
         # rsi ema and sma has nan for the first couple of values.
         self.rsi = calculateRsi(self.stock_price_history)
@@ -200,8 +214,8 @@ class StockEnv(gym.Env):
             stock_ema = self.ema[self.cur_step]
 
         self.obs_namedtuple = obs_namedtuple(owned=stock_owned, open=stock_open, low=stock_low, close=stock_close,
-                                             high=stock_high, adj_close=stock_adj_close, volume=stock_vol,
-                                             rsi=stock_rsi, sma=stock_sma, ema=stock_ema, cash_in_hand=cash_in_hand)
+                                             high=stock_high, rsi=stock_rsi, sma=stock_sma, ema=stock_ema,
+                                             cash_in_hand=cash_in_hand)
         self.trade(action)
 
         cur_reward = self.get_reward()
@@ -219,7 +233,7 @@ class StockEnv(gym.Env):
 
         info = {'cur_reward': cur_reward}
 
-        return self.get_obs(), reward, episode_done, done, info
+        return self.get_obs(), reward, done, info
 
     def get_reward(self):
 
@@ -236,8 +250,8 @@ class StockEnv(gym.Env):
         stock_low = self.stock_price_history.Low[self.cur_step]
         stock_close = self.stock_price_history.Close[self.cur_step]
         stock_high = self.stock_price_history.High[self.cur_step]
-        stock_adj_close = self.stock_price_history['Adj Close'][self.cur_step]
-        stock_vol = self.stock_price_history.Volume[self.cur_step]
+        # stock_adj_close = self.stock_price_history['Adj Close'][self.cur_step]
+        # stock_vol = self.stock_price_history.Volume[self.cur_step]
         # indicators
         # rsi ema and sma has nan for the first couple of values.
         self.rsi = calculateRsi(self.stock_price_history)
@@ -261,8 +275,8 @@ class StockEnv(gym.Env):
             stock_ema = self.ema[self.cur_step]
 
         observation_namedtuple = obs_namedtuple(owned=stock_owned, open=stock_open, low=stock_low, close=stock_close,
-                                                high=stock_high, adj_close=stock_adj_close, volume=stock_vol,
-                                                rsi=stock_rsi, sma=stock_sma, ema=stock_ema, cash_in_hand=cash_in_hand)
+                                                high=stock_high, rsi=stock_rsi, sma=stock_sma, ema=stock_ema,
+                                                cash_in_hand=cash_in_hand)
 
         obs = self.reformat_into_matrix(observation_namedtuple)
 
@@ -276,54 +290,52 @@ class StockEnv(gym.Env):
         stock_low = observation_namedtuple.low
         stock_close = observation_namedtuple.close
         stock_high = observation_namedtuple.high
-        stock_adj_close = observation_namedtuple.adj_close
-        stock_vol = observation_namedtuple.volume
+        # stock_adj_close = observation_namedtuple.adj_close
+        # stock_vol = observation_namedtuple.volume
+        stock_vol = 000000000
         stock_rsi = observation_namedtuple.rsi
         stock_sma = observation_namedtuple.sma
         stock_ema = observation_namedtuple.ema
 
-        self.obs_space = observation_namedtuple
-
-        norm_stock_owned = np.interp(stock_owned, [0, stock_vol], [0.0, 1.0]).reshape(1,1)
-        norm_cash_in_hand = np.interp(cash_in_hand, [0, stock_vol*stock_close], [0.0, 1.0]).reshape(1,1)
+        norm_stock_owned = np.interp(stock_owned, [0, stock_vol], [0.0, 1.0]).reshape(1, 1)
+        norm_cash_in_hand = np.interp(cash_in_hand, [0, stock_vol*stock_close], [0.0, 1.0]).reshape(1, 1)
         norm_stock_open = np.interp(stock_open, [0, self.stock_price_history['High'].max()*1.1],
-                                    [0.0, 1.0]).reshape(1,1)
+                                    [0.0, 1.0]).reshape(1, 1)
         norm_stock_low = np.interp(stock_low, [0, self.stock_price_history['High'].max()*1.1],
-                                   [0.0, 1.0]).reshape(1,1)
+                                   [0.0, 1.0]).reshape(1, 1)
         norm_stock_close = np.interp(stock_close, [0, self.stock_price_history['High'].max()*1.1],
-                                     [0.0, 1.0]).reshape(1,1)
+                                     [0.0, 1.0]).reshape(1, 1)
         norm_stock_high = np.interp(stock_high, [0, self.stock_price_history['High'].max()*1.1],
-                                    [0.0, 1.0]).reshape(1,1)
-        norm_stock_adj_close = np.interp(stock_adj_close, [0, self.stock_price_history['High'].max() * 1.1],
-                                         [0.0, 1.0]).reshape(1,1)
-        norm_stock_vol = np.interp(stock_vol, [0, self.stock_price_history['Volume'].max() * 1.1],
-                                   [0.0, 1.0]).reshape(1,1)
-        norm_stock_rsi = np.interp(stock_rsi, [0, self.rsi.max() * 1.1], [0.0, 1.0]).reshape(1,1)
-        norm_stock_sma = np.interp(stock_sma, [0, self.sma.max() * 1.1], [0.0, 1.0]).reshape(1,1)
-        norm_stock_ema = np.interp(stock_ema, [0, self.ema.max() * 1.1], [0.0, 1.0]).reshape(1,1)
+                                    [0.0, 1.0]).reshape(1, 1)
+        # norm_stock_adj_close = np.interp(stock_adj_close, [0, self.stock_price_history['High'].max() * 1.1],
+        #                                  [0.0, 1.0]).reshape(1, 1)
+        # norm_stock_vol = np.interp(stock_vol, [0, self.stock_price_history['Volume'].max() * 1.1],
+        #                            [0.0, 1.0]).reshape(1, 1)
+        norm_stock_rsi = np.interp(stock_rsi, [0, self.rsi.max() * 1.1], [0.0, 1.0]).reshape(1, 1)
+        norm_stock_sma = np.interp(stock_sma, [0, self.sma.max() * 1.1], [0.0, 1.0]).reshape(1, 1)
+        norm_stock_ema = np.interp(stock_ema, [0, self.ema.max() * 1.1], [0.0, 1.0]).reshape(1, 1)
 
         row_matrix = np.concatenate((norm_stock_owned, norm_stock_open, norm_stock_high, norm_stock_low,
-                                     norm_stock_close, norm_stock_adj_close, norm_stock_vol, norm_stock_rsi,
-                                     norm_stock_sma, norm_stock_ema, norm_cash_in_hand))
+                                     norm_stock_close, norm_stock_rsi, norm_stock_sma, norm_stock_ema,
+                                     norm_cash_in_hand))
 
         return row_matrix
 
     def trade(self, action):
 
-        action_vec = self.action_space[action]
+        action_vec = self.action_space.sample()
         cash_in_hand = self.obs_namedtuple.cash_in_hand
 
         allocations = []
         sell_index = []
         buy_index = []
 
-        for i, a in enumerate(action_vec):
-            if a == 0:
-                # sell stocks
-                sell_index.append(i)
-            elif a == 2:
-                # buy stocks
-                buy_index.append(i)
+        if action_vec == 0:
+            # sell stocks
+            sell_index.append(1)
+        elif action_vec == 2:
+            # buy stocks
+            buy_index.append(1)
 
         if sell_index:
             cash_in_hand += self.obs_namedtuple.close * self.obs_namedtuple.owned

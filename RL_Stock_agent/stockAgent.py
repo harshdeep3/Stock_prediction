@@ -1,6 +1,7 @@
 
 import logging
 import pandas_datareader as web
+import yfinance as yf
 
 from datetime import datetime
 from sklearn.preprocessing import StandardScaler
@@ -25,10 +26,15 @@ def get_data(stock_name, start_date, end_date):
         dataframe [dataframe]: This returns the dataframe which is used for the state and by the
         agent
     """
-    df = web.DataReader(stock_name, 'yahoo', start_date, end_date)
+    yf.pdr_override()
+    # pandas_datareader not working -> backend stuff
+    # df = web.DataReader(stock_name, "yahoo", start_date, end_date)
+    # df = web.get_data_yahoo(stock_name, start_date, end_date)
     # reset the index of the data to normal ints so df['Date'] can be used
-    df.reset_index()
-    return df
+    amzn_data = yf.Ticker(stock_name)
+    amzn_data_history = amzn_data.history(period="max")
+    # df.reset_index()
+    return amzn_data_history, amzn_data
 
 
 class StockAgent:
@@ -39,6 +45,13 @@ class StockAgent:
         self.agent_model = None
         self.internal_net_arch = None
         self.env = None
+
+    def set_policy(self) -> None:
+        """
+        This sets the policy that will be used by the model. This can set a custom policy or select one already created
+        by stable baseline.
+        """
+        self.internal_net_arch = "MlpPolicy"
 
     def set_env(self, env) -> None:
         """
@@ -76,29 +89,26 @@ class StockAgent:
 
             self.save_model("saved_model/a2c")
 
-    def set_policy(self) -> None:
-        """
-        This sets the policy that will be used by the model. This can set a custom policy or select one already created
-        by stable baseline.
-        """
-        self.internal_net_arch = "MlpPolicy"
-
 
 def main():
-    data = get_data(STOCK_NAME, START, END)
-    agent = StockAgent
-    agent.set_policy()
+    data, all_data = get_data(STOCK_NAME, START, END)
+    # print(data.head())
+
+    agent = StockAgent()
 
     env = StockEnv(data)
     agent.set_env(env)
-
     model = PPO("MlpPolicy", env, verbose=1)
     model.learn(total_timesteps=1)
-    model.save("ppo_cartpole")
+    # model.save("ppo_cartpole")
 
-    obs = env.reset()
-    while True:
-        action, _states = model.predict(obs)
-        obs, rewards, episode_done, done, info = env.step(action)
-        print(f"obs -> {obs}\nreward -> {rewards}\ndone -> {done}")
+    # obs = env.reset()
+    # while True:
+    #     action, _states = model.predict(obs)
+    #     obs, rewards, episode_done, done, info = env.step(action)
+    #     print(f"obs -> {obs}\nreward -> {rewards}\ndone -> {done}")
         # env.render()
+
+
+if __name__ == "__main__":
+    main()
