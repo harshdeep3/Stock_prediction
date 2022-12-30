@@ -98,9 +98,10 @@ def main():
 
     env = StockEnv(data)
     agent.set_env(env)
-    model = PPO("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=1)
-    # model.save("ppo_cartpole")
+    model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="logs")
+    model.load("ppo_cartpole")
+    model.learn(total_timesteps=1000000)
+    model.save("ppo_cartpole")
 
     # obs = env.reset()
     # while True:
