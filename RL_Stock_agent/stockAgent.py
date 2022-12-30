@@ -103,6 +103,16 @@ def main():
     model.learn(total_timesteps=1000000)
     model.save("ppo_cartpole")
 
+    """
+    To use concurrency to run training 
+    while True 
+        if training -> 
+            train
+        else: 
+            asyncio.sleep(1)
+    
+    """
+
     # obs = env.reset()
     # while True:
     #     action, _states = model.predict(obs)
