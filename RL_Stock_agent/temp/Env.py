@@ -110,8 +110,6 @@ class StockEnv(gym.Env):
         self.action = None
         # possibilities = 3^number of stocks
         self.action_space = spaces.Discrete(n=3)
-        self.action_list = list(
-            map(list, itertools.product([0, 1, 2], repeat=self.n_stock)))
         self.obs_space = spaces.Box(low=0.0, high=1.0, shape=(self.state_dim, 1))
 
         # to start the data for day 0 and get all the info for day 0

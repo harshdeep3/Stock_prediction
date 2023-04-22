@@ -566,7 +566,7 @@ class Env:
             obs[ 6 *self.n_stock: 7 *self.n_stock] = self.stock_Volume
             obs[ 7 *self.n_stock: 8 *self.n_stock] = self.rsi
             obs[ 8 *self.n_stock: 9 *self.n_stock] = self.sma
-            obs[ 9 *self.n_stock:1 0 *self.n_stock] = self.ema
+            obs[ 9 *self.n_stock: 10 *self.n_stock] = self.ema
 
         ####################################################################
         ####################################################################

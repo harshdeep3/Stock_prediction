@@ -1,5 +1,7 @@
 import gym
 import pandas_datareader as web
+import yfinance as yf
+yf.pdr_override()
 from stable_baselines3 import PPO
 
 from Env import StockEnv
@@ -7,11 +9,12 @@ from datetime import datetime
 
 START = datetime(2010, 7, 1)
 END = datetime.today()
-STOCKNAME = 'BTC-USD'
+STOCKNAME = ['BTC-USD']
 
 
 def get_data(stock_name, start, end):
-    df = web.DataReader(stock_name, 'yahoo', start, end)
+    print(stock_name)
+    df = web.data.get_data_yahoo(stock_name, start=start, end=end)
     # reset the index of the data to normal ints so df['Date'] can be used
     df.reset_index()
     return df
@@ -38,4 +41,3 @@ if __name__ == "__main__":
     env = StockEnv(data)
 
     print(env.action_space)
-
