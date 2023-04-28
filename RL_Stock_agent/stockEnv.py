@@ -3,6 +3,8 @@ from collections import namedtuple
 from stable_baselines3 import DQN
 from stable_baselines3.common.env_checker import check_env
 
+import MT5_Link as link
+import MetaTrader5 as mt5
 import gym
 import numpy as np
 import pandas_datareader as web
@@ -124,13 +126,6 @@ class StockMarketEnv(gym.Env):
         self.reset()
 
     def step(self, action):
-        reward = 0
-
-        cur_reward = 0
-        done = False
-        episode_done = False
-        prev_reward = self.get_reward()
-
         # Get current price and calculate reward
         current_price = self.data["Close"][self.current_index]
         self.reward = 0 if action == 0 else current_price * 0.01
@@ -157,9 +152,9 @@ class StockMarketEnv(gym.Env):
 
         # Check if done
         done = self.current_index == len(self.data)
-
+        reward = self.get_reward()
         # Return observation, reward, done, and info
-        return self.reformat_matrix(self.state), self.reward, done, {}
+        return self.reformat_matrix(self.state), reward, done, {}
 
     def trade(self, action):
 
@@ -303,13 +298,27 @@ class StockMarketEnv(gym.Env):
 
 
 if __name__ == '__main__':
+    # MT5 account connection
+    mt5_obj = link.MT5Class()
+    mt5_obj.login_to_metatrader()
+    mt5_obj.get_acc_info()
+
     start = datetime.datetime(2010, 7, 1).strftime("%Y-%m-%d")
     end = datetime.datetime.now().strftime("%Y-%m-%d")
-    data = get_data("AAPL", start, end)
+    # data = get_data("AAPL", start, end)
 
-    print(data.min())
-    print(data['Adj Close'][0])
-    env = StockMarketEnv(data)
+    timeframe = mt5.TIMEFRAME_D1
+    symbol = 'USDJPY'
+    count = 8500  # get 8500 data points
 
-    model = DQN('MlpPolicy', env, verbose=1)
-    model.learn(total_timesteps=10000)
+    data = link.get_historic_data(fx_symbol=symbol, fx_timeframe=timeframe, fx_count=count)
+    if data is None:
+        print("Error: Data not recieved!")
+    else:
+        data.set_index('time', inplace=True)
+        print("\n", data.head())
+        print("\n", data.tail())
+        # env = StockMarketEnv(data)
+        #
+        # model = DQN('MlpPolicy', env, verbose=1)
+        # model.learn(total_timesteps=10000)
