@@ -14,7 +14,7 @@ yf.pdr_override()
 
 
 obs_namedtuple = namedtuple('obs_namedtuple',
-                            ['owned', 'open', 'low', 'close', 'high', 'adj_close', 'volume', 'cash_in_hand'])
+                            ['owned', 'open', 'low', 'close', 'high', 'volume', 'cash_in_hand'])
 
 SMA_TIME = 20
 EMA_TIME = 20
@@ -109,11 +109,11 @@ class StockMarketEnv(gym.Env):
 
         # Define action and observation spaces
         self.action_space = spaces.Discrete(3)
-        self.observation_space = spaces.Box(low=0, high=1, shape=(8,), dtype=np.float64)
+        self.observation_space = spaces.Box(low=0, high=1, shape=(7,), dtype=np.float64)
 
         # Initialize stock data
         self.data = stock_data
-        self.data["pct_change"] = self.data["Close"].pct_change()
+        self.data["pct_change"] = self.data["close"].pct_change()
         self.data = self.data.dropna()
 
         # Initialize state and reward
@@ -122,29 +122,27 @@ class StockMarketEnv(gym.Env):
         self.cash_in_hand = cash_in_hand
 
         # Set starting index for data
-        self.current_index = 0
+        self.current_index = 1
         self.reset()
 
     def step(self, action):
         # Get current price and calculate reward
-        current_price = self.data["Close"][self.current_index]
+        current_price = self.data["close"][self.current_index]
         self.reward = 0 if action == 0 else current_price * 0.01
 
         # Update state
         stock_owned = self.state.owned
         cash_in_hand = self.cash_in_hand
-        stock_open = self.data.Open[self.current_index]
-        stock_low = self.data.Low[self.current_index]
-        stock_close = self.data.Close[self.current_index]
-        stock_high = self.data.High[self.current_index]
-        stock_adj_close = self.data['Adj Close'][self.current_index]
-        stock_vol = self.data.Volume[self.current_index]
+        stock_open = self.data.open[self.current_index]
+        stock_low = self.data.low[self.current_index]
+        stock_close = self.data.close[self.current_index]
+        stock_high = self.data.high[self.current_index]
+        stock_vol = self.data.tick_volume[self.current_index]
 
         # self.state[-1] = self.data.iloc[self.current_index]["pct_change"]
 
         self.state = obs_namedtuple(owned=stock_owned, open=stock_open, low=stock_low, close=stock_close,
-                                    high=stock_high, adj_close=stock_adj_close, volume=stock_vol,
-                                    cash_in_hand=cash_in_hand)
+                                    high=stock_high, volume=stock_vol, cash_in_hand=cash_in_hand)
         self.trade(action)
 
         # Move to next time step
@@ -202,18 +200,17 @@ class StockMarketEnv(gym.Env):
     def reset(self):
         # Reset state, reward, and current index
         self.reward = 0
-        self.current_index = 0
+        self.current_index = 1
 
         owned = 0
-        price_open = self.data['Open'][self.current_index]
-        high = self.data['High'][self.current_index]
-        low = self.data['Low'][self.current_index]
-        close = self.data['Close'][self.current_index]
-        adj_close = self.data['Adj Close'][self.current_index]
-        volume = self.data['Volume'][self.current_index]
+        price_open = self.data['open'][self.current_index]
+        high = self.data['high'][self.current_index]
+        low = self.data['low'][self.current_index]
+        close = self.data['close'][self.current_index]
+        volume = self.data['tick_volume'][self.current_index]
         cash_in_hand = 20000
 
-        self.state = obs_namedtuple(owned=owned, open=price_open, high=high, low=low, close=close, adj_close=adj_close,
+        self.state = obs_namedtuple(owned=owned, open=price_open, high=high, low=low, close=close,
                                     volume=volume, cash_in_hand=cash_in_hand)
 
         return self.reformat_matrix(self.state)
@@ -225,28 +222,24 @@ class StockMarketEnv(gym.Env):
         high = state.high
         low = state.low
         close = state.close
-        adj_close = state.adj_close
         volume = state.volume
         cash_in_hand = state.cash_in_hand
 
         norm_stock_owned = np.interp(owned, [0, volume], [0.0, 1.0]).reshape(1, 1)
         norm_cash_in_hand = np.interp(cash_in_hand, [0, volume*close], [0.0, 1.0]).reshape(1, 1)
-        norm_stock_open = np.interp(price_open, [0, self.data['Open'].max()*1.1],
+        norm_stock_open = np.interp(price_open, [0, self.data['open'].max()*1.1],
                                     [0.0, 1.0]).reshape(1, 1)
-        norm_stock_low = np.interp(low, [0, self.data['Low'].max()*1.1],
+        norm_stock_low = np.interp(low, [0, self.data['low'].max()*1.1],
                                    [0.0, 1.0]).reshape(1, 1)
-        norm_stock_close = np.interp(close, [0, self.data['Close'].max()*1.1],
+        norm_stock_close = np.interp(close, [0, self.data['close'].max()*1.1],
                                      [0.0, 1.0]).reshape(1, 1)
-        norm_stock_high = np.interp(high, [0, self.data['High'].max()*1.1],
+        norm_stock_high = np.interp(high, [0, self.data['high'].max()*1.1],
                                     [0.0, 1.0]).reshape(1, 1)
-        norm_stock_adj_close = np.interp(adj_close, [0, self.data['Adj Close'].max() * 1.1],
-                                         [0.0, 1.0]).reshape(1, 1)
-        norm_stock_vol = np.interp(volume, [0, self.data['Volume'].max() * 1.1],
+        norm_stock_vol = np.interp(volume, [0, self.data['tick_volume'].max() * 1.1],
                                    [0.0, 1.0]).reshape(1, 1)
 
         row_matrix = np.concatenate((norm_stock_owned, norm_stock_open, norm_stock_high, norm_stock_low,
-                                     norm_stock_close, norm_stock_adj_close, norm_stock_vol,
-                                     norm_cash_in_hand)).reshape(8,)
+                                     norm_stock_close, norm_stock_vol, norm_cash_in_hand)).reshape(7,)
 
         return row_matrix
 
@@ -255,7 +248,7 @@ class StockMarketEnv(gym.Env):
 
         return obs
 
-    def update_obs(self, owned=None, stock_open=None, low=None, close=None, high=None, adj_close=None, volume=None,
+    def update_obs(self, owned=None, stock_open=None, low=None, close=None, high=None, volume=None,
                    rsi=None, sma=None, ema=None, cash_in_hand=None):
         if owned is None:
             owned = self.state.owned
@@ -271,9 +264,6 @@ class StockMarketEnv(gym.Env):
 
         if high is None:
             high = self.state.high
-
-        if adj_close is None:
-            adj_close = self.state.adj_close
 
         if volume is None:
             volume = self.state.volume
@@ -291,10 +281,7 @@ class StockMarketEnv(gym.Env):
             cash_in_hand = self.state.cash_in_hand
 
         self.state = obs_namedtuple(owned=owned, open=stock_open, low=low, close=close, high=high,
-                                    adj_close=adj_close, volume=volume, cash_in_hand=cash_in_hand)
-
-    def render(self, mode='human'):
-        pass
+                                    volume=volume, cash_in_hand=cash_in_hand)
 
 
 if __name__ == '__main__':
@@ -305,7 +292,6 @@ if __name__ == '__main__':
 
     start = datetime.datetime(2010, 7, 1).strftime("%Y-%m-%d")
     end = datetime.datetime.now().strftime("%Y-%m-%d")
-    # data = get_data("AAPL", start, end)
 
     timeframe = mt5.TIMEFRAME_D1
     symbol = 'USDJPY'
@@ -318,7 +304,7 @@ if __name__ == '__main__':
         data.set_index('time', inplace=True)
         print("\n", data.head())
         print("\n", data.tail())
-        # env = StockMarketEnv(data)
-        #
-        # model = DQN('MlpPolicy', env, verbose=1)
-        # model.learn(total_timesteps=10000)
+        env = StockMarketEnv(data)
+
+        model = DQN('MlpPolicy', env, verbose=1)
+        model.learn(total_timesteps=10000000)
