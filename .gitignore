@@ -5,3 +5,6 @@
 **.pyc**
 **RL_Stock_agent/logs/**
 *RL_Stock_agent/ppo_cartpole.zip
+**RL_Stock_agent/saved_Files/**
+**RL_Stock_agent/temp/**
+**RL_Stock_agent/temp2/**
