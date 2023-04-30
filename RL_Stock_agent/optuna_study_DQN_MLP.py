@@ -51,10 +51,11 @@ def run_trials(agent, env, optuna_trial: trial, trial_name: str) -> float:
     This function runs the study and store the results in a csv file. This study find the best combination from the
     list.
 
-    :param agent: the agent controller
-    :param optuna_trial: the study trail
-    :param trial_name: where the best hyperparameters are stored.
-    :return: the mean reward from the study
+    @param agent: the agent controller
+    @param env:
+    @param optuna_trial:the study trail
+    @param trial_name: where the best hyperparameters are stored.
+    @return: the mean reward from the study
     """
     now = datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')
     with open(trial_name, 'a', newline='') as file:
@@ -64,8 +65,8 @@ def run_trials(agent, env, optuna_trial: trial, trial_name: str) -> float:
     # sample from the choices available as a starting point
     # sampled_parameters = sample_hyperparameters(optuna_trial)
 
-    agent.learn(total_timesteps=10000000)
-    agent.save("saved_Files/saved_model/ppo")
+    agent.learn(total_timesteps=1000000)
+    agent.save("saved_Files/saved_model/dqn")
 
     mean_reward, std_reward = evaluate_policy(agent, env, n_eval_episodes=2)
 
@@ -108,7 +109,7 @@ def main() -> None:
         print("Error: Data not recieved!")
     else:
         env = stockEnv.StockMarketEnv(data)
-        agent = DQN('MlpPolicy', env, verbose=1)
+        agent = DQN('MlpPolicy', env, verbose=1, tensorboard_log="saved_Files/log_dir")
 
         study = optuna.create_study(direction='maximize')
 
