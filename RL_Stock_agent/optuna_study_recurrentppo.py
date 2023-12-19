@@ -1,15 +1,17 @@
+import numpy as np
 
+from sb3_contrib import RecurrentPPO
+from stable_baselines3.common.evaluation import evaluate_policy
 import datetime
 import optuna
 import logging
-import stockEnv
-from stable_baselines3 import DQN
+from stock_Env import Env
 import os
 import MT5_Link as link
 import MetaTrader5 as mt5
-
+from stockEnv import StockMarketEnv as GenEnv
+from stable_baselines3.common.env_util import make_vec_env
 from collections import namedtuple
-from stable_baselines3.common.evaluation import evaluate_policy
 from optuna import trial
 
 LOGGING_LEVEL = logging.DEBUG
@@ -51,11 +53,11 @@ def run_trials(agent, env, optuna_trial: trial, trial_name: str) -> float:
     This function runs the study and store the results in a csv file. This study find the best combination from the
     list.
 
-    @param agent: the agent controller
+    :param agent: the agent controller
+    :param optuna_trial: the study trail
+    :param trial_name: where the best hyperparameters are stored.
+    :return: the mean reward from the study
     @param env:
-    @param optuna_trial:the study trail
-    @param trial_name: where the best hyperparameters are stored.
-    @return: the mean reward from the study
     """
     now = datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')
     with open(trial_name, 'a', newline='') as file:
@@ -66,7 +68,7 @@ def run_trials(agent, env, optuna_trial: trial, trial_name: str) -> float:
     # sampled_parameters = sample_hyperparameters(optuna_trial)
 
     agent.learn(total_timesteps=1000000)
-    agent.save("saved_Files/saved_model/dqn")
+    agent.save("saved_Files/saved_model/ppo")
 
     mean_reward, std_reward = evaluate_policy(agent, env, n_eval_episodes=2)
 
@@ -92,30 +94,36 @@ def main() -> None:
     #                            ' :: %(funcName)s :: line #-%(lineno)d :: %(message)s')
 
     # file where the study results will be saved
-    trial_name = f'saved_Files/{now}_optuna_study_DQN.csv'
+    trial_name = f'saved_Files/{now}_optuna_study_PPO_4_envs.csv'
     mt5_obj = link.MT5Class()
     mt5_obj.login_to_metatrader()
     mt5_obj.get_acc_info()
-
     start = datetime.datetime(2010, 7, 1).strftime("%Y-%m-%d")
     end = datetime.datetime.now().strftime("%Y-%m-%d")
 
     timeframe = mt5.TIMEFRAME_D1
     symbol = 'USDJPY'
-    count = 8500  # get 8500 data points
+    count = 500  # get 8500 data points
 
+    # env = make_vec_env(Env, n_envs=4)
     data = link.get_historic_data(fx_symbol=symbol, fx_timeframe=timeframe, fx_count=count)
     if data is None:
         print("Error: Data not recieved!")
+        env = "CartPole-v1"
     else:
-        env = stockEnv.StockMarketEnv(data)
-        agent = DQN('MlpPolicy', env, verbose=1, tensorboard_log="saved_Files/log_dir")
+        # env = GenEnv(data)
+        env = make_vec_env(Env, n_envs=4)
 
-        study = optuna.create_study(direction='maximize')
+    # running a recurrentPPO agent
+    agent = RecurrentPPO('MlpLstmPolicy', env, verbose=1, tensorboard_log="saved_Files/log_dir")
 
-        # optuna optimisation
-        study.optimize(lambda trail: run_trials(agent, env, trail, trial_name), n_trials=NUM_TRAILS)
+    study = optuna.create_study(direction='maximize')
+
+    # optuna optimisation
+    # study.optimize(lambda trail: run_trials(agent, env, trail, trial_name), n_trials=NUM_TRAILS)
 
 
 if __name__ == '__main__':
     main()
+
+

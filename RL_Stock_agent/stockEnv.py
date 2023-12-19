@@ -1,11 +1,11 @@
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 from collections import namedtuple
 from stable_baselines3 import DQN
 from stable_baselines3.common.env_checker import check_env
 
 import MT5_Link as link
 import MetaTrader5 as mt5
-import gym
 import numpy as np
 import pandas_datareader as web
 import datetime
@@ -14,7 +14,7 @@ yf.pdr_override()
 
 
 obs_namedtuple = namedtuple('obs_namedtuple',
-                            ['owned', 'open', 'low', 'close', 'high', 'volume', 'cash_in_hand'])
+                            ['owned', 'open', 'low', 'close', 'high', 'volume', 'sma', 'ema', 'rsi', 'cash_in_hand'])
 
 SMA_TIME = 20
 EMA_TIME = 20
@@ -50,7 +50,7 @@ def calculate_rsi(stock_data, time=RSI_TIME):
 
     global RSI_TIME
     try:
-        diff = stock_data.Close.diff()
+        diff = stock_data.close.diff()
         # this preservers dimensions off diff values
         up = 0 * diff
         down = 0 * diff
@@ -81,7 +81,7 @@ def calculate_sma(stock_data, time=SMA_TIME):
                 [type]: Moving average values
     """
     global SMA_TIME
-    return stock_data['Close'].rolling(time).mean()
+    return stock_data['close'].rolling(time).mean()
 
 
 def calculate_ema(stock_data, time=EMA_TIME):
@@ -98,7 +98,7 @@ def calculate_ema(stock_data, time=EMA_TIME):
     """
     global EMA_TIME
 
-    return stock_data['Close'].ewm(span=time, min_periods=0, adjust=False).mean()
+    return stock_data['close'].ewm(span=time, min_periods=0, adjust=False).mean()
 
 
 class StockMarketEnv(gym.Env):
@@ -109,7 +109,7 @@ class StockMarketEnv(gym.Env):
 
         # Define action and observation spaces
         self.action_space = spaces.Discrete(3)
-        self.observation_space = spaces.Box(low=0, high=1, shape=(7,), dtype=np.float64)
+        self.observation_space = spaces.Box(low=0, high=1, shape=(10,), dtype=np.float64)
 
         # Initialize stock data
         self.data = stock_data
@@ -121,6 +121,10 @@ class StockMarketEnv(gym.Env):
         self.reward = 0
         self.cash_in_hand = cash_in_hand
 
+        self.rsi = calculate_rsi(self.data)
+        self.sma = calculate_sma(self.data)
+        self.ema = calculate_ema(self.data)
+
         # Set starting index for data
         self.current_index = 1
         self.reset()
@@ -129,7 +133,6 @@ class StockMarketEnv(gym.Env):
         # Get current price and calculate reward
         current_price = self.data["close"][self.current_index]
         self.reward = 0 if action == 0 else current_price * 0.01
-
         # Update state
         stock_owned = self.state.owned
         cash_in_hand = self.cash_in_hand
@@ -138,11 +141,25 @@ class StockMarketEnv(gym.Env):
         stock_close = self.data.close[self.current_index]
         stock_high = self.data.high[self.current_index]
         stock_vol = self.data.tick_volume[self.current_index]
-
+        stock_rsi = 0
+        stock_sma = stock_close
+        stock_ema = stock_close
         # self.state[-1] = self.data.iloc[self.current_index]["pct_change"]
 
+        if not np.isnan(self.rsi[self.current_index]):
+            stock_rsi = self.rsi[self.current_index]
+
+        # as this use previous data to get the current value, this can be nan
+        # at the first few time steps, this is to remove them
+        if not np.isnan(self.sma[self.current_index]):
+            stock_sma = self.sma[self.current_index]
+
+        if not np.isnan(self.ema[self.current_index]):
+            stock_ema = self.ema[self.current_index]
+
         self.state = obs_namedtuple(owned=stock_owned, open=stock_open, low=stock_low, close=stock_close,
-                                    high=stock_high, volume=stock_vol, cash_in_hand=cash_in_hand)
+                                    high=stock_high, volume=stock_vol, sma=stock_sma, ema=stock_ema, rsi=stock_rsi,
+                                    cash_in_hand=cash_in_hand)
         self.trade(action)
 
         # Move to next time step
@@ -152,7 +169,7 @@ class StockMarketEnv(gym.Env):
         done = self.current_index == len(self.data)
         reward = self.get_reward()
         # Return observation, reward, done, and info
-        return self.reformat_matrix(self.state), reward, done, {}
+        return self.reformat_matrix(self.state), reward, done, False, {}
 
     def trade(self, action):
 
@@ -197,23 +214,42 @@ class StockMarketEnv(gym.Env):
 
         return reward
 
-    def reset(self):
+    def reset(self, seed=None):
         # Reset state, reward, and current index
         self.reward = 0
         self.current_index = 1
 
-        owned = 0
-        price_open = self.data['open'][self.current_index]
-        high = self.data['high'][self.current_index]
-        low = self.data['low'][self.current_index]
-        close = self.data['close'][self.current_index]
-        volume = self.data['tick_volume'][self.current_index]
+        info = {}
+
+        stock_owned = 0
+        stock_open = self.data['open'][self.current_index]
+        stock_high = self.data['high'][self.current_index]
+        stock_low = self.data['low'][self.current_index]
+        stock_close = self.data['close'][self.current_index]
+        stock_vol = self.data['tick_volume'][self.current_index]
         cash_in_hand = 20000
+        stock_rsi = calculate_rsi(self.data)
+        stock_rsi = 0
+        stock_sma = stock_close
+        stock_ema = stock_close
+        # self.state[-1] = self.data.iloc[self.current_index]["pct_change"]
 
-        self.state = obs_namedtuple(owned=owned, open=price_open, high=high, low=low, close=close,
-                                    volume=volume, cash_in_hand=cash_in_hand)
+        if not np.isnan(self.rsi[self.current_index]):
+            stock_rsi = self.rsi[self.current_index]
 
-        return self.reformat_matrix(self.state)
+        # as this use previous data to get the current value, this can be nan
+        # at the first few time steps, this is to remove them
+        if not np.isnan(self.sma[self.current_index]):
+            stock_sma = self.sma[self.current_index]
+
+        if not np.isnan(self.ema[self.current_index]):
+            stock_ema = self.ema[self.current_index]
+
+        self.state = obs_namedtuple(owned=stock_owned, open=stock_open, low=stock_low, close=stock_close,
+                                    high=stock_high, volume=stock_vol, sma=stock_sma, ema=stock_ema, rsi=stock_rsi,
+                                    cash_in_hand=cash_in_hand)
+
+        return self.reformat_matrix(self.state), info
 
     def reformat_matrix(self, state):
 
@@ -223,6 +259,9 @@ class StockMarketEnv(gym.Env):
         low = state.low
         close = state.close
         volume = state.volume
+        rsi = state.rsi
+        sma = state.sma
+        ema = state.ema
         cash_in_hand = state.cash_in_hand
 
         norm_stock_owned = np.interp(owned, [0, volume], [0.0, 1.0]).reshape(1, 1)
@@ -237,9 +276,16 @@ class StockMarketEnv(gym.Env):
                                     [0.0, 1.0]).reshape(1, 1)
         norm_stock_vol = np.interp(volume, [0, self.data['tick_volume'].max() * 1.1],
                                    [0.0, 1.0]).reshape(1, 1)
+        norm_stock_sma = np.interp(sma, [0, self.sma.max() * 1.1],
+                                   [0.0, 1.0]).reshape(1, 1)
+        norm_stock_ema = np.interp(ema, [0, self.ema.max() * 1.1],
+                                   [0.0, 1.0]).reshape(1, 1)
+        norm_stock_rsi = np.interp(rsi, [0, self.rsi.max() * 1.1],
+                                   [0.0, 1.0]).reshape(1, 1)
 
         row_matrix = np.concatenate((norm_stock_owned, norm_stock_open, norm_stock_high, norm_stock_low,
-                                     norm_stock_close, norm_stock_vol, norm_cash_in_hand)).reshape(7,)
+                                     norm_stock_close, norm_stock_vol, norm_stock_sma, norm_stock_ema, norm_stock_rsi,
+                                     norm_cash_in_hand)).reshape(10,)
 
         return row_matrix
 
@@ -268,20 +314,23 @@ class StockMarketEnv(gym.Env):
         if volume is None:
             volume = self.state.volume
 
-        # if rsi is None:
-        #     rsi = self.state.rsi
-        #
-        # if sma is None:
-        #     sma = self.state.sma
-        #
-        # if ema is None:
-        #     ema = self.state.ema
+        if rsi is None:
+            if not np.isnan(self.state.rsi):
+                rsi = self.state.rsi
+
+        if sma is None:
+            if not np.isnan(self.state.sma):
+                sma = self.state.sma
+
+        if ema is None:
+            if not np.isnan(self.state.ema):
+                ema = self.state.ema
 
         if cash_in_hand is None:
             cash_in_hand = self.state.cash_in_hand
 
         self.state = obs_namedtuple(owned=owned, open=stock_open, low=low, close=close, high=high,
-                                    volume=volume, cash_in_hand=cash_in_hand)
+                                    volume=volume, sma=sma, ema=ema, rsi=rsi, cash_in_hand=cash_in_hand)
 
 
 if __name__ == '__main__':
@@ -293,18 +342,30 @@ if __name__ == '__main__':
     start = datetime.datetime(2010, 7, 1).strftime("%Y-%m-%d")
     end = datetime.datetime.now().strftime("%Y-%m-%d")
 
-    timeframe = mt5.TIMEFRAME_D1
+    timeframe_h1 = mt5.TIMEFRAME_H1
+    timeframe_h4 = mt5.TIMEFRAME_H4
+    timeframe_d1 = mt5.TIMEFRAME_D1
+    timeframe_w1 = mt5.TIMEFRAME_W1
     symbol = 'USDJPY'
     count = 8500  # get 8500 data points
 
-    data = link.get_historic_data(fx_symbol=symbol, fx_timeframe=timeframe, fx_count=count)
-    if data is None:
+    data_h1 = link.get_historic_data(fx_symbol=symbol, fx_timeframe=timeframe_h1, fx_count=count)
+    # data_h4 = link.get_historic_data(fx_symbol=symbol, fx_timeframe=timeframe_h4, fx_count=count)
+    # data_d1 = link.get_historic_data(fx_symbol=symbol, fx_timeframe=timeframe_d1, fx_count=count)
+    # data_w1 = link.get_historic_data(fx_symbol=symbol, fx_timeframe=timeframe_w1, fx_count=count)
+
+    # print("H\n", data_h1.head())
+    # print("\nH4\n", data_h4.head())
+    # print("\nD1\n", data_d1.head())
+    # print("\nW1\n", data_w1.head())
+
+    if data_h1 is None:
         print("Error: Data not recieved!")
     else:
-        data.set_index('time', inplace=True)
-        print("\n", data.head())
-        print("\n", data.tail())
-        env = StockMarketEnv(data)
+        data_h1.set_index('time', inplace=True)
+        print("\n", data_h1.head())
+        print("\n", data_h1.tail())
+        # env = StockMarketEnv(data_h1)
 
-        model = DQN('MlpPolicy', env, verbose=1)
-        model.learn(total_timesteps=10000000)
+        # model = DQN('MlpPolicy', env, verbose=1)
+        # model.learn(total_timesteps=1000)

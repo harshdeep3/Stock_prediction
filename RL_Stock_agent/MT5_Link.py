@@ -3,10 +3,10 @@ import pandas as pd
 from datetime import datetime
 import pytz
 
-LOGIN = 51176525
+LOGIN = 51535169
 SERVER = "ICMarketsSC-Demo"
 # password
-PASSWORD = "53kZPYq6"
+PASSWORD = ""
 
 # display data on the MetaTrader 5 package
 print("MetaTrader5 package author: ", mt5.__author__)
@@ -41,7 +41,7 @@ class MT5Class:
         else:
             account_info_dict = mt5.account_info()._asdict()
             self.account_info = pd.DataFrame(list(account_info_dict.items()), columns=['property', 'value'])
-            # print(self.account_info)
+            print(self.account_info)
 
 
 def get_historic_data(fx_symbol, fx_timeframe, fx_count):
@@ -71,9 +71,16 @@ if __name__ == "__main__":
     # create 'datetime' objects in UTC time zone to avoid the implementation of a local time zone offset
     utc_from = datetime(2010, 1, 10, tzinfo=timezone)
     utc_to = datetime(2020, 1, 11, tzinfo=timezone)
+    
+    # goes back to 1971-08-11
     count = 13500
 
+    # print account info
+    # mt5_obj.get_acc_info()
+    
+    # get data
     df = get_historic_data(symbol, timeframe, count)
+    df = df.set_index('time')
 
     print(df)
     # Disconnect from the terminal
