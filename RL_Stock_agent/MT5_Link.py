@@ -6,7 +6,7 @@ import pytz
 LOGIN = 51535169
 SERVER = "ICMarketsSC-Demo"
 # password
-PASSWORD = ""
+PASSWORD = "Cdm9I@7hsU"
 
 # display data on the MetaTrader 5 package
 print("MetaTrader5 package author: ", mt5.__author__)

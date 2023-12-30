@@ -3,14 +3,20 @@ from gymnasium import spaces
 from collections import namedtuple
 from stable_baselines3 import DQN
 from stable_baselines3.common.env_checker import check_env
+import logging
 
 import MT5_Link as link
 import MetaTrader5 as mt5
 import numpy as np
+import pandas as pd
 import pandas_datareader as web
 import datetime
 import yfinance as yf
 yf.pdr_override()
+
+from ta.trend import sma_indicator
+from ta.trend import ema_indicator
+from ta.momentum import RSIIndicator
 
 
 obs_namedtuple = namedtuple('obs_namedtuple',
@@ -20,6 +26,7 @@ SMA_TIME = 20
 EMA_TIME = 20
 RSI_TIME = 14
 
+LOGGING_LEVEL = logging.DEBUG
 
 def get_data(stock_name, start_date, end_date):
     """[summary]
@@ -34,78 +41,14 @@ def get_data(stock_name, start_date, end_date):
     return df
 
 
-def calculate_rsi(stock_data, time=RSI_TIME):
-    """
-        RSI is an indicator which is used by traders, to look at the strength of
-        the current price movement. This returns the RSI value for each state
-
-        Args:
-        data ([Dataframe]): The data used to calculate the RSI at a state
-        time ([int], optional): RSI calculations use a time frame which it
-                                                    spans to get the value. Defaults to rsi_time, which is set to 14.
-
-        Returns:
-        [float]: The RSI value for that movement.
-    """
-
-    global RSI_TIME
-    try:
-        diff = stock_data.close.diff()
-        # this preservers dimensions off diff values
-        up = 0 * diff
-        down = 0 * diff
-        # up change is equal to the positive difference
-        up[diff > 0] = diff[diff > 0]
-        # down change is equal to negative deifference,
-        down[diff < 0] = diff[diff < 0]
-
-        avgerage_up = up.ewm(span=time, min_periods=time).mean()
-        avgerage_down = down.ewm(span=time, min_periods=time).mean()
-
-        rs = abs(avgerage_up / avgerage_down)
-        return 100 - (100 / (1 + rs))
-
-    except Exception as e:
-        print("Failed! Error", e)
-
-
-def calculate_sma(stock_data, time=SMA_TIME):
-    """
-        This calculates the values for the simple moving average.
-        Args:
-                stock_data ([dataframe]): Data used to calculate the sma
-                time (int, optional): This is the time period the moving avergae being
-                calculated. Defaults to sma_time, which is set to 20 intially.
-
-        Returns:
-                [type]: Moving average values
-    """
-    global SMA_TIME
-    return stock_data['close'].rolling(time).mean()
-
-
-def calculate_ema(stock_data, time=EMA_TIME):
-    """
-        This calculates the exponential moving average, this gives more importance
-        to the newer data.
-        Args:
-        data ([dataframe]): Data used to calculate the ema
-        time (int, optional): This is the time period the moving avergae being
-        calculated. Defaults to ema_time, which is set to 20 intially.
-
-        Returns:
-        [type]: [description]
-    """
-    global EMA_TIME
-
-    return stock_data['close'].ewm(span=time, min_periods=0, adjust=False).mean()
-
-
 class StockMarketEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, stock_data, cash_in_hand=20000):
+    def __init__(self, stock_data, cash_in_hand=400):
         super(StockMarketEnv, self).__init__()
+                
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(LOGGING_LEVEL)     
 
         # Define action and observation spaces
         self.action_space = spaces.Discrete(3)
@@ -120,60 +63,69 @@ class StockMarketEnv(gym.Env):
         self.state = None
         self.reward = 0
         self.cash_in_hand = cash_in_hand
+        self.total_net = cash_in_hand
+        self.total_list = []
 
-        self.rsi = calculate_rsi(self.data)
-        self.sma = calculate_sma(self.data)
-        self.ema = calculate_ema(self.data)
+        # get indicator data
+        self.rsi = RSIIndicator(self.data['close'],window=RSI_TIME, fillna=True).rsi()
+        self.sma = sma_indicator(self.data['close'],window=SMA_TIME, fillna=True)
+        self.ema = ema_indicator(self.data['close'],window=EMA_TIME, fillna=True)
 
         # Set starting index for data
         self.current_index = 1
         self.reset()
 
     def step(self, action):
+        
         # Get current price and calculate reward
-        current_price = self.data["close"][self.current_index]
+        current_price = self.data["close"].iloc[self.current_index]
         self.reward = 0 if action == 0 else current_price * 0.01
         # Update state
         stock_owned = self.state.owned
         cash_in_hand = self.cash_in_hand
-        stock_open = self.data.open[self.current_index]
-        stock_low = self.data.low[self.current_index]
-        stock_close = self.data.close[self.current_index]
-        stock_high = self.data.high[self.current_index]
-        stock_vol = self.data.tick_volume[self.current_index]
+        stock_open = self.data.open.iloc[self.current_index]
+        stock_low = self.data.low.iloc[self.current_index]
+        stock_close = self.data.close.iloc[self.current_index]
+        stock_high = self.data.high.iloc[self.current_index]
+        stock_vol = self.data.tick_volume.iloc[self.current_index]
         stock_rsi = 0
         stock_sma = stock_close
         stock_ema = stock_close
         # self.state[-1] = self.data.iloc[self.current_index]["pct_change"]
-
-        if not np.isnan(self.rsi[self.current_index]):
-            stock_rsi = self.rsi[self.current_index]
+        if not np.isnan(self.rsi.iloc[self.current_index]):
+            stock_rsi = self.rsi.iloc[self.current_index]
 
         # as this use previous data to get the current value, this can be nan
         # at the first few time steps, this is to remove them
-        if not np.isnan(self.sma[self.current_index]):
-            stock_sma = self.sma[self.current_index]
+        if not np.isnan(self.sma.iloc[self.current_index]):
+            stock_sma = self.sma.iloc[self.current_index]
 
-        if not np.isnan(self.ema[self.current_index]):
-            stock_ema = self.ema[self.current_index]
+        if not np.isnan(self.ema.iloc[self.current_index]):
+            stock_ema = self.ema.iloc[self.current_index]
 
         self.state = obs_namedtuple(owned=stock_owned, open=stock_open, low=stock_low, close=stock_close,
                                     high=stock_high, volume=stock_vol, sma=stock_sma, ema=stock_ema, rsi=stock_rsi,
                                     cash_in_hand=cash_in_hand)
         self.trade(action)
-
         # Move to next time step
         self.current_index += 1
+        if self.current_index == 13499:
+            self.reset()
 
+        self.logger.debug(f"action: {action}, stocks owned: {stock_owned}, cash in hand: {cash_in_hand}, open: {stock_open}, low:" 
+                          f"{stock_low}, close: {stock_close}, high: {stock_high}, volume: {stock_vol}, RSI: {stock_rsi},"
+                          f"SMA: {stock_sma}, EMA: {stock_ema}")
+        
         # Check if done
         done = self.current_index == len(self.data)
         reward = self.get_reward()
+        self.total_net = self.get_net()
         # Return observation, reward, done, and info
         return self.reformat_matrix(self.state), reward, done, False, {}
 
     def trade(self, action):
-
-        cash_in_hand = self.state.cash_in_hand
+        
+        cash_in_hand = self.cash_in_hand
 
         allactions = []
         sell_index = []
@@ -189,8 +141,9 @@ class StockMarketEnv(gym.Env):
         if sell_index:
             cash_in_hand += self.state.close * self.state.owned
             owned = 0
+            # make update obs_namedtyple function
             self.update_obs(cash_in_hand=cash_in_hand, owned=owned)
-        #     make update obs_namedtyple function
+            
         elif buy_index:
             can_buy = True
             while can_buy:
@@ -202,19 +155,32 @@ class StockMarketEnv(gym.Env):
                     if self.state.cash_in_hand > self.state.close:
                         owned += 1  # buy one share
                         cash_in_hand -= self.state.close
+                        
                         self.update_obs(owned=owned, cash_in_hand=cash_in_hand)
                     else:
                         # if the cash left is lower the stock price then stop buying
                         can_buy = False
-        return allactions
+        
+        self.cash_in_hand = cash_in_hand
+        
+        self.logger.debug(f"action: {action}, cash in hand: {cash_in_hand}, state cash in hand: {self.state.cash_in_hand}, owned: {self.state.owned}")
 
     def get_reward(self):
+        self.logger.debug("get_reward function - > ")
 
-        reward = (self.state.owned * self.state.close) + self.state.cash_in_hand
+        print(f"index: {self.current_index}, len of data.close: {len(self.data['close'])}")
+        reward = (self.state.owned * self.data['close'].iloc[self.current_index]) + self.cash_in_hand
 
         return reward
+    
+    def get_net(self):
+        self.logger.debug("get_net function - > ")
+        
+        total_net = (self.state.owned * self.data.close.iloc[self.current_index]) + self.cash_in_hand
 
-    def reset(self, seed=None):
+        return total_net
+
+    def reset(self, seed=None):        
         # Reset state, reward, and current index
         self.reward = 0
         self.current_index = 1
@@ -222,37 +188,38 @@ class StockMarketEnv(gym.Env):
         info = {}
 
         stock_owned = 0
-        stock_open = self.data['open'][self.current_index]
-        stock_high = self.data['high'][self.current_index]
-        stock_low = self.data['low'][self.current_index]
-        stock_close = self.data['close'][self.current_index]
-        stock_vol = self.data['tick_volume'][self.current_index]
-        cash_in_hand = 20000
-        stock_rsi = calculate_rsi(self.data)
-        stock_rsi = 0
-        stock_sma = stock_close
-        stock_ema = stock_close
+        
+        stock_open = self.data['open'].iloc[self.current_index]
+        stock_high = self.data['high'].iloc[self.current_index]
+        stock_low = self.data['low'].iloc[self.current_index]
+        stock_close = self.data['close'].iloc[self.current_index]
+        stock_vol = self.data['tick_volume'].iloc[self.current_index]
+        cash_in_hand = 200
+        
+        #todo add % change
         # self.state[-1] = self.data.iloc[self.current_index]["pct_change"]
 
-        if not np.isnan(self.rsi[self.current_index]):
-            stock_rsi = self.rsi[self.current_index]
+        stock_rsi = self.rsi.iloc[self.current_index]
 
         # as this use previous data to get the current value, this can be nan
         # at the first few time steps, this is to remove them
-        if not np.isnan(self.sma[self.current_index]):
-            stock_sma = self.sma[self.current_index]
+        stock_sma = self.sma.iloc[self.current_index]
 
-        if not np.isnan(self.ema[self.current_index]):
-            stock_ema = self.ema[self.current_index]
+        stock_ema = self.ema.iloc[self.current_index]
 
         self.state = obs_namedtuple(owned=stock_owned, open=stock_open, low=stock_low, close=stock_close,
                                     high=stock_high, volume=stock_vol, sma=stock_sma, ema=stock_ema, rsi=stock_rsi,
                                     cash_in_hand=cash_in_hand)
-
-        return self.reformat_matrix(self.state), info
+        
+        self.total_net = self.get_net()
+        state_output = self.reformat_matrix(self.state)
+        self.logger.debug(f"stocks owned: {stock_owned}, cash in hand: {cash_in_hand}, open: {stock_open}, low:"
+                        f"{stock_low}, close: {stock_close}, high: {stock_high}, volume: {stock_vol}, RSI: {stock_rsi},"
+                        f"SMA: {stock_sma}, EMA: {stock_ema}")
+        return state_output, info
 
     def reformat_matrix(self, state):
-
+        
         owned = state.owned
         price_open = state.open
         high = state.high
@@ -287,15 +254,23 @@ class StockMarketEnv(gym.Env):
                                      norm_stock_close, norm_stock_vol, norm_stock_sma, norm_stock_ema, norm_stock_rsi,
                                      norm_cash_in_hand)).reshape(10,)
 
+        self.logger.debug(f"stocks owned: {norm_stock_owned}, cash in hand: {norm_cash_in_hand}, open: {norm_stock_open}, low: "
+                          f"{norm_stock_low}, close: {norm_stock_close}, high: {norm_stock_high}, volume: {norm_stock_vol}, RSI: {norm_stock_rsi},"
+                          f"SMA: {norm_stock_sma}, EMA: {norm_stock_ema}")
+        
         return row_matrix
 
-    def get_obs(self):
+    def get_obs(self):        
+        
         obs = self.reformat_matrix(self.state)
+        
+        self.logger.debug(f"obs: {obs}")
 
         return obs
 
     def update_obs(self, owned=None, stock_open=None, low=None, close=None, high=None, volume=None,
                    rsi=None, sma=None, ema=None, cash_in_hand=None):
+        
         if owned is None:
             owned = self.state.owned
 
@@ -329,6 +304,10 @@ class StockMarketEnv(gym.Env):
         if cash_in_hand is None:
             cash_in_hand = self.state.cash_in_hand
 
+        self.logger.debug(f"stocks owned: {owned}, cash in hand: {cash_in_hand}, open: {stock_open}, low:"
+                        f"{low}, close: {close}, high: {high}, volume: {volume}, RSI: {rsi},"
+                        f"SMA: {sma}, EMA: {ema}")
+        
         self.state = obs_namedtuple(owned=owned, open=stock_open, low=low, close=close, high=high,
                                     volume=volume, sma=sma, ema=ema, rsi=rsi, cash_in_hand=cash_in_hand)
 
